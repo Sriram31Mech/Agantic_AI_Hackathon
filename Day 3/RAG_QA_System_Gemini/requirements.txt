@@ -1,0 +1,11 @@
+torch
+langchain
+langchain-community
+faiss-cpu
+google-generativeai
+sentence-transformers
+streamlit
+pypdf
+python-dotenv
+langchain-google-genai
+numpy==1.26.4

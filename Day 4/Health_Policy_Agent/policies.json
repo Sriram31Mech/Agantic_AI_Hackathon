@@ -1,0 +1,29 @@
+[
+  {
+    "name": "HealthSecure Gold",
+    "min_age": 18,
+    "max_age": 60,
+    "coverage_type": "family",
+    "dependents": 4,
+    "premium": 12000,
+    "features": ["dental", "wellness"]
+  },
+  {
+    "name": "SeniorCare Plus",
+    "min_age": 60,
+    "max_age": 99,
+    "coverage_type": "individual",
+    "dependents": 0,
+    "premium": 15000,
+    "features": ["wellness"]
+  },
+  {
+    "name": "FamilyFirst Basic",
+    "min_age": 21,
+    "max_age": 55,
+    "coverage_type": "family",
+    "dependents": 3,
+    "premium": 10000,
+    "features": ["maternity"]
+  }
+]
