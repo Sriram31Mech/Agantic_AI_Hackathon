@@ -48,10 +48,21 @@ if uploaded_file is not None:
     # Generate and display outcome analysis
     st.markdown("## 📊 Outcome Analysis")
     with st.spinner("Generating outcome analysis..."):
-        analysis = analyzer.analyze_outcome(
-            validation_result["found_pillars"],
-            validation_result["missing_pillars"]
-        )
+        # Create a comprehensive content string for analysis
+        analysis_content = f"""
+        Resume Content:
+        {text}
+        
+        Validation Results:
+        - Found Pillars: {', '.join(validation_result['found_pillars']) if validation_result['found_pillars'] else 'None'}
+        - Missing Pillars: {', '.join(validation_result['missing_pillars']) if validation_result['missing_pillars'] else 'None'}
+        - Is Valid: {validation_result['is_valid']}
+        
+        Missing Pillar Descriptions:
+        {chr(10).join([f"- {pillar}: {validation_result['missing_pillars_descriptions'][pillar]}" for pillar in validation_result['missing_pillars']]) if validation_result['missing_pillars'] else 'All pillars present'}
+        """
+        
+        analysis = analyzer.analyze_outcome(analysis_content)
         st.markdown(analysis)
 
 st.markdown("---")
