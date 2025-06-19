@@ -14,22 +14,6 @@ Build a multi-agent AI system to validate student OKR submissions (e.g., resumes
 
 Each resume is expected to address all 5 pillars, either as sections or content.
 
----
-
-## ⚠️ Current Implementation Status
-
-- **Implemented:**
-  - Pillar validation logic (`rag_validator.py`) is functional and used in the Streamlit app (`app.py`).
-  - Users can upload a PDF resume, and the app checks for the presence of all 5 pillars.
-- **NOT Implemented:**
-  - The 4-agent system (Pillar Alignment Checker, Semantic Drift Detector, Measurability Checker, RAG-powered Suggester) is **not yet implemented**.
-  - The `agents/` directory and agent files are placeholders and do not contain working agent logic.
-  - Outcome analysis and advanced suggestions described in the architecture are not available in the current codebase.
-
-**Potential Error:** Users may expect features that are not yet implemented. Please refer to this section for the current capabilities.
-
----
-
 ## 🤖 Intended Agent Architecture (Planned)
 
 ### 1. **Agent 1: Pillar Alignment Checker**
@@ -53,11 +37,7 @@ Each resume is expected to address all 5 pillars, either as sections or content.
 ## 🗂️ File Structure
 ```
 Day 9/
-├── agents/
-│   ├── content_checker.py           # (Placeholder) Agent 1: Pillar Alignment Checker
-│   ├── semantic_Drift.py           # (Placeholder) Agent 2: Semantic Drift Detector
-│   ├── measurability_checker.py    # (Placeholder) Agent 3: Measurability Checker
-│   └── suggestion_generator.py     # (Placeholder) Agent 4: RAG-powered Suggester
+├── agents.py
 ├── app.py                          # Streamlit frontend
 ├── rag_validator.py                # Pillar validation logic
 ├── pillars.py                      # Pillar definitions
