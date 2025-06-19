@@ -248,3 +248,4 @@ This project is part of the Agantic AI Hackathon and follows the event's guideli
 ---
 
 **Note**: This implementation successfully resolves the "Unknown field for Part: thought" error by using direct Google Generative AI integration instead of LangChain, ensuring robust and reliable operation.
+
