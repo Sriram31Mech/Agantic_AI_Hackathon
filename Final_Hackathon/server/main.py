@@ -4,7 +4,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 import os
-from agents.okr_parser import parse_okr
+from agents.okr_parser import parse_okr, load_context
 
 app = FastAPI()
 
@@ -41,5 +41,7 @@ async def serve_react_app(full_path: str):
     return {"error": "Frontend build not found. Please run 'npm run build' in the client directory."}
 
 if __name__ == "__main__":
+    print("[INFO] Loading RAG context...")
+    load_context()
     print("[INFO] Starting FastAPI server on port 5050...")
     uvicorn.run("main:app", host="0.0.0.0", port=5050, reload=True)

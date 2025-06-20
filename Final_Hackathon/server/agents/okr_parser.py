@@ -3,8 +3,31 @@
 import os
 import json
 import re
+from pathlib import Path
 from dotenv import load_dotenv
 import google.generativeai as genai
+
+# Global RAG context
+RAG_CONTEXT = []
+CONTEXT_ERROR = None
+
+def load_context():
+    global RAG_CONTEXT, CONTEXT_ERROR
+    try:
+        context_path = Path(__file__).parent / "../data/okr_examples.json"
+        with open(context_path, "r", encoding="utf-8") as f:
+            okrs = json.load(f)
+        RAG_CONTEXT = [okr["okr"] for okr in okrs if "okr" in okr]
+        if not RAG_CONTEXT:
+            CONTEXT_ERROR = "Warning: okr_examples.json is empty or contains no valid OKRs."
+        else:
+            CONTEXT_ERROR = None
+    except FileNotFoundError:
+        RAG_CONTEXT = []
+        CONTEXT_ERROR = "Error: data/okr_examples.json file is missing. Please add example OKRs."
+    except Exception as e:
+        RAG_CONTEXT = []
+        CONTEXT_ERROR = f"Error loading okr_examples.json: {str(e)}"
 
 # Load environment variables
 load_dotenv()
@@ -15,20 +38,6 @@ genai.configure(api_key=GEMINI_API_KEY)
 
 # Initialize Gemini Model
 gemini_model = genai.GenerativeModel("gemini-1.5-flash")
-
-# Load RAG context from past OKRs (just load JSON, no vector store)
-def load_context():
-    try:
-        with open("data/okr_examples.json", "r", encoding="utf-8") as f:
-            okrs = json.load(f)
-        context_list = [okr["okr"] for okr in okrs if "okr" in okr]
-        if not context_list:
-            return None, "Warning: okr_examples.json is empty or contains no valid OKRs."
-        return context_list, None
-    except FileNotFoundError:
-        return None, "Error: data/okr_examples.json file is missing. Please add example OKRs."
-    except Exception as e:
-        return None, f"Error loading okr_examples.json: {str(e)}"
 
 def format_context(context_list):
     return "\n\n".join(context_list) if context_list else ""
@@ -51,9 +60,7 @@ def try_parse_json(text):
 
 # OKR Parser Agent using Gemini
 def parse_okr(okr_input: str) -> dict:
-    context_list, context_error = load_context()
-    context = format_context(context_list)
-
+    context = format_context(RAG_CONTEXT)
     prompt = f"""
 You are an OKR parsing agent. Your job is to convert a user-submitted OKR into structured JSON format.
 
@@ -72,17 +79,17 @@ Input OKR: {okr_input}
 
 Return only the structured JSON.
 """
-
     response = gemini_model.generate_content(prompt)
     result, parse_error = try_parse_json(response.text)
     if not result:
         result = {"error": "Could not parse response as JSON", "raw": response.text, "details": parse_error}
-    if context_error:
-        result["context_warning"] = context_error
+    if CONTEXT_ERROR:
+        result["context_warning"] = CONTEXT_ERROR
     return result
 
 # Example Usage
 if __name__ == "__main__":
+    load_context()
     okr_text = "Submit a research paper on climate tech innovations by end of Q3"
     parsed = parse_okr(okr_text)
     print(json.dumps(parsed, indent=2))
