@@ -1,0 +1,12 @@
+streamlit
+openai
+pymongo
+chromadb
+tiktoken
+email-validator
+python-dotenv
+langchain
+langchain-core
+langchain-google-genai
+google-generativeai
+python-dotenv
