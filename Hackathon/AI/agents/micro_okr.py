@@ -76,18 +76,6 @@ def validate_task_schedule(tasks, deadline):
         print("⚠️ Schedule validation error:", e)
         return False
 
-# def save_to_mongo(tasks, objective):
-#     """Insert tasks into MongoDB, tagging each with the parent objective."""
-#     try:
-#         client = MongoClient("MONGODB_URL")
-#         db = client["okr_db"]
-#         col = db["micro_tasks"]
-#         for t in tasks:
-#             t["objective"] = objective
-#         col.insert_many(tasks)
-#         print("✅ Saved microtasks to MongoDB")
-#     except Exception as e:
-#         print("❌ MongoDB insert failed:", e)
 
 # --- Main Function ---
 def create_micro_tasks(parsed_okr, deadline=None):
@@ -103,11 +91,11 @@ def create_micro_tasks(parsed_okr, deadline=None):
 
     # Invoke LLM chain
     try:
-        formatted = prompt.format(
-            objective=parsed_okr["objective"],
-            key_results=kr_str,
-            okr_deadline=deadline_str
-        )
+        result = chain.invoke({
+            "objective": parsed_okr["objective"],
+            "key_results": kr_str,
+            "okr_deadline": deadline_str})
+
         print("📝 Prompt ready")
         chain = prompt | llm | parser
         result = chain.invoke({

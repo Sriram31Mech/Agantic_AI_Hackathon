@@ -220,7 +220,7 @@ const OkrSubmission = () => {
                           )}
                         />
 
-                        <FormField
+                        {/* <FormField
                           control={form.control}
                           name="priority"
                           render={({ field }) => (
@@ -259,7 +259,7 @@ const OkrSubmission = () => {
                               <FormMessage />
                             </FormItem>
                           )}
-                        />
+                        /> */}
                       </div>
 
                       {/* Submit Button */}

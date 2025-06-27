@@ -32,7 +32,7 @@ Only respond with a valid JSON object.
 """)
 
 # LangChain chain
-okr_chain = LLMChain(llm=llm, prompt=prompt)
+okr_chain = prompt | llm
 
 # Function to parse OKR
 def parse_okr(okr_text: str) -> dict:
