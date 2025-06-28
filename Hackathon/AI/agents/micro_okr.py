@@ -86,18 +86,15 @@ def create_micro_tasks(parsed_okr, deadline=None):
         return []
 
     # Prepare inputs
-    kr_str      = "\n".join(key_results) if isinstance(key_results, list) else str(key_results)
+    kr_str = "\n".join(key_results) if isinstance(key_results, list) else str(key_results)
     deadline_str = deadline or "in 2 weeks"
 
-    # Invoke LLM chain
-    try:
-        result = chain.invoke({
-            "objective": parsed_okr["objective"],
-            "key_results": kr_str,
-            "okr_deadline": deadline_str})
+    # ✅ Define the chain BEFORE invoking it
+    chain = prompt | llm | parser
+    print("📝 Prompt chain constructed")
 
-        print("📝 Prompt ready")
-        chain = prompt | llm | parser
+    try:
+        # Invoke LLM chain
         result = chain.invoke({
             "objective": parsed_okr["objective"],
             "key_results": kr_str,
@@ -108,6 +105,7 @@ def create_micro_tasks(parsed_okr, deadline=None):
         # Validate & persist
         if not validate_task_schedule(result, deadline_str):
             print("⚠️ Invalid schedule detected.")
+
         # save_to_mongo(result, parsed_okr["objective"])
         return result
 

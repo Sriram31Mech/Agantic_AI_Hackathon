@@ -44,13 +44,13 @@ const OkrSubmission = () => {
       title: "",
       description: "",
       targetDate: new Date(),
-      priority: "medium",
+      // priority: "medium",
     },
   });
 
   const createOkrMutation = useMutation({
     mutationFn: async (data: InsertOkr) => {
-      return apiRequest("POST", "/api/okrs", data);
+      return apiRequest("POST","http://localhost:8000/process_okr", data);
     },
     onSuccess: (response) => {
       setSubmissionState("processing");

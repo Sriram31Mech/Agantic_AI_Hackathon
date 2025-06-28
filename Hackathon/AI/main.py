@@ -1,10 +1,14 @@
+import sys
+import os
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from datetime import date
-import sys
-import os
 from pymongo import MongoClient
 from dotenv import load_dotenv
+
+sys.path.append(os.path.dirname(__file__))  # Ensure mongo_client is in the path
+from mongo_clients import okr_collection
 
 # --- Logging Setup ---
 import logging
@@ -27,27 +31,23 @@ except Exception as e:
     logger.info("❌ Error importing backend modules:", e)
     raise e
 
+from fastapi.middleware.cors import CORSMiddleware  # 👈 Import CORS middleware
+
 app = FastAPI(title="OKR Action Tracker API")
 
-# --- MongoDB Setup ---
-MONGO_URI = os.getenv("MONGODB_URL")
-if not MONGO_URI:
-    raise RuntimeError("❌ MONGO_URI not found in .env file!")
-
-client = MongoClient(MONGO_URI)
-
-def test_mongo_connection():
-    try:
-        client.admin.command("ping")  # Pings MongoDB server
-        return {"status": "success", "message": "MongoDB is connected."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"MongoDB connection failed: {e}")
-
+# 👇 Add CORS middleware here
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Or specify your frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 # --- Request and Response Models ---
 class OKRInput(BaseModel):
     title: str = Field(..., min_length=1, example="Publish AI Articles")
     description: str = Field(..., min_length=10, example="I want to publish 3 AI articles this quarter.")
-    deadline: date = Field(..., example="2025-09-30")
+    targetDate: date = Field(..., example="2025-07-10T00:00:00.000Z")
 
 class MicroTask(BaseModel):
     task: str
@@ -62,7 +62,8 @@ class OKRResponse(BaseModel):
 # --- Endpoint to Process OKRs ---
 @app.post("/process_okr", response_model=OKRResponse)
 def process_okr(input_data: OKRInput):
-    okr_input = f"{input_data.description} by {input_data.deadline}"
+    deadline = input_data.targetDate
+    okr_input = f"{input_data.description} by {deadline}"
 
     try:
         parsed = parse_okr(okr_input)
@@ -71,15 +72,25 @@ def process_okr(input_data: OKRInput):
         raise HTTPException(status_code=400, detail=f"Error parsing OKR: {e}")
 
     try:
-        micro_tasks = create_micro_tasks(parsed, deadline=str(input_data.deadline))
+        micro_tasks = create_micro_tasks(parsed, deadline=str(deadline))
         if not micro_tasks:
             raise HTTPException(status_code=204, detail="No micro-tasks generated.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating micro-tasks: {e}")
 
+    # Store everything in MongoDB
+    response_data = {
+        "title": input_data.title,
+        "description": input_data.description,
+        "targetDate": str(input_data.targetDate),
+        "parsed": parsed,
+        "micro_tasks": micro_tasks
+    }
+
+    try:
+        okr_collection.insert_one(response_data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error saving to MongoDB: {e}")
+
     return OKRResponse(parsed=parsed, micro_tasks=micro_tasks)
 
-# --- Endpoint to Check MongoDB Connection ---
-@app.get("/check_db")
-def check_db_connection():
-    return test_mongo_connection()

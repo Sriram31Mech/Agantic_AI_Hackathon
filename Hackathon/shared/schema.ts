@@ -7,7 +7,7 @@ export const okrs = pgTable("okrs", {
   title: text("title").notNull(),
   description: text("description").notNull(),
   targetDate: timestamp("target_date").notNull(),
-  priority: text("priority").notNull(), // "high", "medium", "low"
+  // priority: text("priority").notNull(), // "high", "medium", "low"
   status: text("status").notNull().default("active"), // "active", "completed", "paused"
   progress: integer("progress").notNull().default(0), // 0-100
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -20,7 +20,7 @@ export const tasks = pgTable("tasks", {
   title: text("title").notNull(),
   description: text("description"),
   deadline: timestamp("deadline").notNull(),
-  priority: text("priority").notNull(), // "high", "medium", "low"
+  // priority: text("priority").notNull(), // "high", "medium", "low"
   status: text("status").notNull().default("pending"), // "pending", "completed"
   completedAt: timestamp("completed_at"),
   proofUrl: text("proof_url"),
