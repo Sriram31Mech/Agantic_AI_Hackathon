@@ -1,7 +1,7 @@
 import os
 import sys
 from datetime import datetime
-from pymongo import MongoClient
+# from pymongo import MongoClient
 from langchain.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_google_genai import ChatGoogleGenerativeAI

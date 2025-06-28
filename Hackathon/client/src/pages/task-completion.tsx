@@ -259,9 +259,6 @@ const TaskCompletion = () => {
                   <div className="flex items-center text-gray-500">
                     <span>Due: {formatRelativeTime(new Date(task.deadline))}</span>
                   </div>
-                  <Badge className={getPriorityColor(task.priority)}>
-                    {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)} Priority
-                  </Badge>
                 </div>
               </div>
 

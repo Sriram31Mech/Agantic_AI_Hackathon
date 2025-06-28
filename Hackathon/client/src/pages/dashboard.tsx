@@ -95,7 +95,7 @@ const Dashboard = () => {
   const filteredTasks = tasks?.filter(task => {
     if (taskFilter === "pending" && task.status !== "pending") return false;
     if (taskFilter === "completed" && task.status !== "completed") return false;
-    if (priorityFilter !== "all" && task.priority !== priorityFilter) return false;
+    // if (priorityFilter !== "all" && task.priority !== priorityFilter) return false;
     return true;
   });
 

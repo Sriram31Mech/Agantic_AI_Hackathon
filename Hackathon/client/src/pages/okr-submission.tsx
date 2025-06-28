@@ -48,6 +48,7 @@ const OkrSubmission = () => {
     },
   });
 
+// Fast API request to create OKR
   const createOkrMutation = useMutation({
     mutationFn: async (data: InsertOkr) => {
       return apiRequest("POST","http://localhost:8000/process_okr", data);
@@ -219,47 +220,6 @@ const OkrSubmission = () => {
                             </FormItem>
                           )}
                         />
-
-                        {/* <FormField
-                          control={form.control}
-                          name="priority"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className="flex items-center font-semibold">
-                                <Flag className="w-4 h-4 mr-2 text-amber-600" />
-                                Priority Level
-                              </FormLabel>
-                              <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                <FormControl>
-                                  <SelectTrigger className="py-3">
-                                    <SelectValue placeholder="Select priority" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  <SelectItem value="high">
-                                    <div className="flex items-center">
-                                      <div className="w-2 h-2 bg-red-500 rounded-full mr-2"></div>
-                                      High Priority
-                                    </div>
-                                  </SelectItem>
-                                  <SelectItem value="medium">
-                                    <div className="flex items-center">
-                                      <div className="w-2 h-2 bg-amber-500 rounded-full mr-2"></div>
-                                      Medium Priority
-                                    </div>
-                                  </SelectItem>
-                                  <SelectItem value="low">
-                                    <div className="flex items-center">
-                                      <div className="w-2 h-2 bg-emerald-500 rounded-full mr-2"></div>
-                                      Low Priority
-                                    </div>
-                                  </SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        /> */}
                       </div>
 
                       {/* Submit Button */}
