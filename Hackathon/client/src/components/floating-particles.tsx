@@ -1,29 +1,28 @@
-import { motion } from "framer-motion";
+import React from 'react';
+import { motion } from 'framer-motion';
 
 const FloatingParticles = () => {
-  const particles = Array.from({ length: 8 }, (_, i) => i);
-
+  const particles = Array.from({ length: 20 }, (_, i) => i);
+  
   return (
-    <div className="floating-particles">
-      {particles.map((i) => (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      {particles.map((particle) => (
         <motion.div
-          key={i}
-          className="particle"
-          style={{
-            width: Math.random() * 4 + 2 + "px",
-            height: Math.random() * 4 + 2 + "px",
-            left: Math.random() * 100 + "%",
-          }}
+          key={particle}
+          className="absolute w-2 h-2 bg-white/20 rounded-full"
           animate={{
-            y: [window.innerHeight + 100, -100],
-            rotate: [0, 360],
-            opacity: [0, 1, 1, 0],
+            x: [0, Math.random() * 100 - 50],
+            y: [0, Math.random() * 100 - 50],
+            opacity: [0, 1, 0],
           }}
           transition={{
-            duration: 3 + Math.random() * 2,
+            duration: Math.random() * 10 + 5,
             repeat: Infinity,
-            delay: i * 0.5,
-            ease: "easeInOut",
+            ease: "linear",
+          }}
+          style={{
+            left: `${Math.random() * 100}%`,
+            top: `${Math.random() * 100}%`,
           }}
         />
       ))}

@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from storage import IStorage
 from typing import List
 from shared.schemas import OkrWithTasks
+from bson import ObjectId
 
 
 # Dependency to get storage instance
@@ -130,11 +131,22 @@ def serialize_document(doc):
     del doc["_id"]
     return doc
 
-@app.get("/api/get-okrs")  # You can rename this to /get-microtasks for clarity
+@app.get("/api/get-okrs")  # get all OKRs
 async def get_micro_tasks():
     try:
         docs = list(okr_collection.find())
         serialized = [serialize_document(d) for d in docs]
+        return {"result": serialized}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/api/get-okr/{id}") # get OKR by ID
+async def get_okr_by_id(id: str):
+    try:
+        doc = okr_collection.find_one({"_id": ObjectId(id)})
+        if not doc:
+            return {"error": "OKR not found"}
+        serialized = serialize_document(doc)
         return {"result": serialized}
     except Exception as e:
         return {"error": str(e)}

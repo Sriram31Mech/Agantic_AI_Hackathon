@@ -65,9 +65,9 @@ export const updateTaskSchema = createInsertSchema(tasks).partial().omit({
   okrId: true,
 });
 
-export type Okr = typeof okrs.$inferSelect;
+export type Okr = Omit<typeof okrs.$inferSelect, 'id'> & { id: string | number };
 export type InsertOkr = z.infer<typeof insertOkrSchema>;
-export type Task = typeof tasks.$inferSelect;
+export type Task = Omit<typeof tasks.$inferSelect, 'okrId'> & { okrId: string | number };
 export type InsertTask = z.infer<typeof insertTaskSchema>;
 export type UpdateTask = z.infer<typeof updateTaskSchema>;
 export type Reminder = typeof reminders.$inferSelect;

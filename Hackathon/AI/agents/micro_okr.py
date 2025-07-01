@@ -34,8 +34,15 @@ Each task must:
 - Not compress a large workload into one task
 - Have a due date ≤ the overall OKR deadline: {okr_deadline}
 - Use YYYY-MM-DD for due dates
-- Include a short `evidence_hint` string
-- Include a `level` ("easy", "medium", "hard")
+- Include a short `evidence_hint_type` **selected only from**:  
+  • "text"  
+  • "git-url"  
+  • "youtube-url"  
+  • "linkedIn-url"  
+  • "screenshot"  
+  • "other-url"  
+  • "pdf"
+- Include a `level`: "easy", "medium", or "hard"
 
 Objective:
 {objective}
@@ -48,7 +55,7 @@ Return EXACT JSON:
   {{
     "task": "string",
     "due": "YYYY-MM-DD",
-    "evidence_hint": "string",
+    "evidence_hint": "text|git-url|youtube-url|linkedIn-url|screenshot|other-url|pdf",
     "level": "easy|medium|hard"
   }}
 ]
