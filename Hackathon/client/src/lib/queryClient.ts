@@ -1,18 +1,20 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    const errorBody = await res.json().catch(() => ({}));
+    const errorMessage = errorBody.detail || res.statusText;
+    throw new Error(`${res.status}: ${errorMessage}`);
   }
 }
 
-export async function apiRequest(
+export async function apiRequest<T>(
   method: string,
   url: string,
   data?: unknown | undefined,
-): Promise<Response> {
-  const res = await fetch(url, {
+): Promise<T> {
+  const res = await fetch(`${BASE_URL}${url}`, {
     method,
     headers: data ? { "Content-Type": "application/json" } : {},
     body: data ? JSON.stringify(data) : undefined,
@@ -20,7 +22,7 @@ export async function apiRequest(
   });
 
   await throwIfResNotOk(res);
-  return res;
+  return await res.json();
 }
 
 type UnauthorizedBehavior = "returnNull" | "throw";

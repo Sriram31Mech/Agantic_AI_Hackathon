@@ -7,10 +7,9 @@ import { slideUp } from "@/lib/animations";
 
 interface ReminderCardProps {
   reminder: Reminder;
-  onStatusChange: (id: number, status: string) => void;
 }
 
-const ReminderCard = ({ reminder, onStatusChange }: ReminderCardProps) => {
+const ReminderCard = ({ reminder }: ReminderCardProps) => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case "sent":

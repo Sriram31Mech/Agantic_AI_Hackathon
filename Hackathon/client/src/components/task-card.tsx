@@ -10,17 +10,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Task } from "@shared/schema";
-import { formatRelativeTime, getPriorityColor, createCelebrationParticles } from "@/lib/utils";
+import { formatRelativeTime, createCelebrationParticles } from "@/lib/utils";
 import { cardHover, celebrate } from "@/lib/animations";
 import { useLocation } from "wouter";
 
 interface TaskCardProps {
   task: Task;
   onComplete: (id: number) => void;
-  onUpdate: (id: number, updates: Partial<Task>) => void;
 }
 
-const TaskCard = ({ task, onComplete, onUpdate }: TaskCardProps) => {
+const TaskCard = ({ task, onComplete }: TaskCardProps) => {
   const [, navigate] = useLocation();
   const isCompleted = task.status === "completed";
   const isOverdue = !isCompleted && new Date(task.deadline) < new Date();
@@ -48,10 +47,7 @@ const TaskCard = ({ task, onComplete, onUpdate }: TaskCardProps) => {
   return (
     <motion.div
       data-task-id={task.id}
-      className={`task-card ${isCompleted ? 'completed-task' : 'bg-white'} ${
-        task.priority === 'high' ? 'priority-high' : 
-        task.priority === 'medium' ? 'priority-medium' : 'priority-low'
-      } rounded-xl p-4 shadow-sm hover:shadow-md`}
+      className={`task-card ${isCompleted ? 'completed-task' : 'bg-white'} rounded-xl p-4 shadow-sm hover:shadow-md`}
       variants={cardHover}
       whileHover="hover"
       layout
@@ -64,10 +60,7 @@ const TaskCard = ({ task, onComplete, onUpdate }: TaskCardProps) => {
           <Checkbox
             checked={isCompleted}
             onCheckedChange={handleCheckboxChange}
-            className={`w-5 h-5 border-2 ${
-              task.priority === 'high' ? 'border-red-400' :
-              task.priority === 'medium' ? 'border-amber-400' : 'border-emerald-400'
-            } ${isCompleted ? 'bg-emerald-500 border-emerald-500' : ''}`}
+            className={`w-5 h-5 border-2 ${isCompleted ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300'}`}
           />
         </motion.div>
 
@@ -80,14 +73,6 @@ const TaskCard = ({ task, onComplete, onUpdate }: TaskCardProps) => {
               <Clock className="w-3 h-3 mr-1" />
               {isCompleted ? 'Completed' : formatRelativeTime(new Date(task.deadline))}
             </span>
-            <Badge
-              variant="secondary"
-              className={`text-xs ${isCompleted ? 'bg-emerald-400 text-emerald-900' : ''} ${
-                !isCompleted ? getPriorityColor(task.priority) : ''
-              }`}
-            >
-              {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)} Priority
-            </Badge>
             {isOverdue && !isCompleted && (
               <Badge variant="destructive" className="text-xs">
                 Overdue
@@ -124,9 +109,6 @@ const TaskCard = ({ task, onComplete, onUpdate }: TaskCardProps) => {
                   Mark Complete
                 </DropdownMenuItem>
               )}
-              <DropdownMenuItem onClick={() => navigate(`/task/${task.id}/complete`)}>
-                Edit Task
-              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

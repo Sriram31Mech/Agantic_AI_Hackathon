@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Target, CheckSquare, TrendingUp, Bell, Calendar, Award, Filter } from "lucide-react";
+import { Plus, Target, CheckSquare, TrendingUp, Bell, Calendar, Award, Filter, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,26 @@ import { useToast } from "@/hooks/use-toast";
 import { fadeIn, slideUp, staggerContainer, staggerItem, bounce, cardHover } from "@/lib/animations";
 import { OkrWithTasks, Task, Reminder } from "@shared/schema";
 import { useState } from "react";
+
+interface OkrResponse {
+  title: string;
+  description: string;
+  targetDate: string;
+  parsed: {
+    objective: string;
+    deliverables: string[];
+    deadline: string;
+    key_results: string[];
+  };
+  micro_tasks: {
+    task: string;
+    due: string;
+    evidence_hint: string;
+    level: string;
+  }[];
+  status: string;
+  id: string;
+}
 
 interface DashboardStats {
   activeOkrs: number;
@@ -39,63 +59,77 @@ const Dashboard = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [taskFilter, setTaskFilter] = useState<string>("all");
-  const [priorityFilter, setPriorityFilter] = useState<string>("all");
 
-  // Fetch dashboard data
-  const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
-    queryKey: ["/api/dashboard/stats"],
+  // Fetch OKRs data from the single endpoint
+  const { data: okrResponse, isLoading: okrsLoading } = useQuery<{ result: OkrResponse[] }>({
+    queryKey: ["/api/get-okrs"],
+    queryFn: () => apiRequest("GET", "/api/get-okrs"),
   });
 
-  const { data: okrs, isLoading: okrsLoading } = useQuery<OkrWithTasks[]>({
-    queryKey: ["/api/okrs"],
-  });
+  // Transform the OKR response into the format expected by the dashboard
+  const okrs: OkrWithTasks[] = okrResponse?.result.map(okr => ({
+    id: parseInt(okr.id),
+    title: okr.title,
+    description: okr.description,
+    targetDate: new Date(okr.targetDate),
+    status: okr.status || 'active',
+    progress: calculateOkrProgress(okr),
+    completedTasks: okr.micro_tasks.filter(task => task.level === 'completed').length,
+    totalTasks: okr.micro_tasks.length,
+    tasks: okr.micro_tasks.map((task, index) => ({
+      id: index,
+      title: task.task,
+      description: task.evidence_hint || null,
+      deadline: new Date(task.due),
+      status: 'pending',
+      okrId: parseInt(okr.id),
+      createdAt: new Date(),
+      completedAt: null,
+      proofUrl: null,
+    })),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  })) || [];
 
-  const { data: tasks, isLoading: tasksLoading } = useQuery<Task[]>({
-    queryKey: ["/api/tasks"],
-  });
+  // Calculate dashboard stats from the OKRs data
+  const stats: DashboardStats = {
+    activeOkrs: okrs.filter(okr => okr.status === 'active').length,
+    completedTasks: okrs.reduce((sum, okr) => sum + okr.completedTasks, 0),
+    overallProgress: calculateOverallProgress(okrs),
+    weeklyProgress: calculateWeeklyProgress(okrs),
+    monthlyProgress: calculateMonthlyProgress(okrs),
+    upcomingReminders: okrs.reduce((sum, okr) => {
+      return sum + okr.tasks.filter(task => {
+        const taskDeadline = new Date(task.deadline);
+        const sevenDaysFromNow = new Date();
+        sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+        return taskDeadline <= sevenDaysFromNow && task.status === "pending";
+      }).length;
+    }, 0),
+  };
 
-  const { data: reminders, isLoading: remindersLoading } = useQuery<Reminder[]>({
-    queryKey: ["/api/reminders"],
-  });
+  // Get all tasks from all OKRs
+  const tasks: Task[] = okrs.flatMap(okr => okr.tasks);
 
-  // Mutations
-  const completeTaskMutation = useMutation({
-    mutationFn: async (taskId: number) => {
-      return apiRequest("POST", `/api/tasks/${taskId}/complete`, {});
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/okrs"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      toast({
-        title: "Task completed! 🎉",
-        description: "Great job on completing another task!",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to complete task. Please try again.",
-        variant: "destructive",
-      });
-    },
-  });
+  // Use tasks as reminders for the reminders section
+  const reminders: Reminder[] = tasks.map(task => ({
+    id: task.id,
+    title: task.title,
+    description: task.description || null,
+    dueDate: new Date(task.deadline),
+    status: 'pending',
+    scheduledFor: new Date(task.deadline),
+    createdAt: new Date(),
+    taskId: task.id,
+    message: task.description || `Reminder for ${task.title}`,
+    deliveryMethod: 'dashboard',
+    sentAt: null,
+  }));
 
-  const updateTaskMutation = useMutation({
-    mutationFn: async ({ id, updates }: { id: number; updates: Partial<Task> }) => {
-      return apiRequest("PATCH", `/api/tasks/${id}`, updates);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/okrs"] });
-    },
-  });
-
-  // Filter tasks
+  // Filter tasks based on selected filters
   const filteredTasks = tasks?.filter(task => {
     if (taskFilter === "pending" && task.status !== "pending") return false;
     if (taskFilter === "completed" && task.status !== "completed") return false;
-    // if (priorityFilter !== "all" && task.priority !== priorityFilter) return false;
     return true;
   });
 
@@ -109,30 +143,31 @@ const Dashboard = () => {
   });
 
   const handleCompleteTask = (id: number) => {
-    completeTaskMutation.mutate(id);
+    queryClient.invalidateQueries({ queryKey: ["/api/get-okrs"] });
+    toast({
+      title: "Task completed! 🎉",
+      description: "Great job on completing another task!",
+    });
   };
 
-  const handleUpdateTask = (id: number, updates: Partial<Task>) => {
-    updateTaskMutation.mutate({ id, updates });
-  };
-
-  const handleStatusChange = (id: number, status: string) => {
-    // Update reminder status (would be implemented with mutation)
-    console.log("Update reminder status:", id, status);
-  };
-
-  if (statsLoading || okrsLoading || tasksLoading || remindersLoading) {
+  if (okrsLoading) {
     return (
-      <div className="min-h-screen pt-20 px-6">
+      <div className="min-h-screen pt-20 px-6 bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-800">
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Loading skeletons */}
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="glass-card rounded-3xl p-6">
-                <div className="skeleton h-4 w-3/4 mb-4"></div>
-                <div className="skeleton h-8 w-1/2 mb-2"></div>
-                <div className="skeleton h-3 w-full"></div>
-              </div>
+              <motion.div 
+                key={i} 
+                className="glass-card rounded-3xl p-8"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.1 }}
+              >
+                <div className="skeleton h-6 w-3/4 mb-4"></div>
+                <div className="skeleton h-10 w-1/2 mb-4"></div>
+                <div className="skeleton h-4 w-full mb-2"></div>
+                <div className="skeleton h-4 w-4/5"></div>
+              </motion.div>
             ))}
           </div>
         </div>
@@ -140,380 +175,406 @@ const Dashboard = () => {
     );
   }
 
+  // Helper functions for calculations
+  function calculateOkrProgress(okr: OkrResponse): number {
+    const totalTasks = okr.micro_tasks.length;
+    if (totalTasks === 0) return 0;
+    
+    const completedTasks = okr.micro_tasks.filter(task => task.level === 'hard').length;
+    return Math.round((completedTasks / totalTasks) * 100);
+  }
+
+  function calculateOverallProgress(okrs: OkrWithTasks[]): number {
+    if (okrs.length === 0) return 0;
+    const totalProgress = okrs.reduce((sum, okr) => sum + okr.progress, 0);
+    return Math.round(totalProgress / okrs.length);
+  }
+
+  function calculateWeeklyProgress(okrs: OkrWithTasks[]): {
+    completed: number;
+    total: number;
+    percentage: number;
+  } {
+    const now = new Date();
+    const oneWeekAgo = new Date(now);
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    
+    const weeklyTasks = okrs.flatMap(okr => 
+      okr.tasks.filter(task => {
+        const taskDate = new Date(task.deadline);
+        return taskDate >= oneWeekAgo && taskDate <= now;
+      })
+    );
+    
+    const completed = weeklyTasks.filter(task => task.status === 'completed').length;
+    const total = weeklyTasks.length;
+    
+    return {
+      completed,
+      total,
+      percentage: total > 0 ? Math.round((completed / total) * 100) : 0,
+    };
+  }
+
+  function calculateMonthlyProgress(okrs: OkrWithTasks[]): {
+    completed: number;
+    total: number;
+    percentage: number;
+  } {
+    const now = new Date();
+    const oneMonthAgo = new Date(now);
+    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+    
+    const monthlyTasks = okrs.flatMap(okr => 
+      okr.tasks.filter(task => {
+        const taskDate = new Date(task.deadline);
+        return taskDate >= oneMonthAgo && taskDate <= now;
+      })
+    );
+    
+    const completed = monthlyTasks.filter(task => task.status === 'completed').length;
+    const total = monthlyTasks.length;
+    
+    return {
+      completed,
+      total,
+      percentage: total > 0 ? Math.round((completed / total) * 100) : 0,
+    };
+  }
+
   return (
-    <motion.div
-      className="min-h-screen pt-20 px-6 pb-6 relative z-10"
-      variants={fadeIn}
-      initial="initial"
-      animate="animate"
-    >
-      <div className="max-w-7xl mx-auto">
-        
-        {/* Navigation */}
-        <motion.nav 
-          className="glass-effect fixed top-0 left-0 right-0 z-50 px-6 py-4"
-          variants={slideUp}
-        >
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center">
-                <Target className="text-white text-sm" />
-              </div>
-              <h1 className="text-xl font-bold text-white">OKR Tracker</h1>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Button variant="ghost" size="sm" className="text-white hover:bg-white/10 relative">
-                <Bell className="w-4 h-4" />
-                {stats && stats.upcomingReminders > 0 && (
-                  <motion.span 
-                    className="notification-badge absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"
-                    animate={{ scale: [1, 1.2, 1] }}
-                    transition={{ repeat: Infinity, duration: 1 }}
-                  />
-                )}
-              </Button>
-            </div>
-          </div>
-        </motion.nav>
+    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-800 relative overflow-hidden">
+      {/* Background decorative elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-500/20 rounded-full blur-3xl"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-indigo-500/20 rounded-full blur-3xl"></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-pink-500/10 rounded-full blur-3xl"></div>
+      </div>
 
-        {/* Hero Section */}
-        <motion.div
-          className="glass-card rounded-3xl p-8 mb-8"
-          variants={slideUp}
-          initial="initial"
-          animate="animate"
-        >
-          <div className="text-center">
-            <motion.h2 
-              className="text-4xl font-bold gradient-text mb-4"
-              variants={bounce}
-              animate="animate"
-            >
-              Welcome Back, Student! 🎯
-            </motion.h2>
-            <p className="text-gray-600 text-lg mb-6">Track your objectives, complete tasks, and achieve your goals</p>
-            
-            {stats && (
-              <motion.div 
-                className="flex justify-center space-x-8"
-                variants={staggerContainer}
-                animate="animate"
-              >
-                <motion.div className="text-center" variants={staggerItem}>
-                  <div className="text-3xl font-bold text-indigo-600">{stats.activeOkrs}</div>
-                  <div className="text-sm text-gray-500">Active OKRs</div>
-                </motion.div>
-                <motion.div className="text-center" variants={staggerItem}>
-                  <div className="text-3xl font-bold text-emerald-600">{stats.completedTasks}</div>
-                  <div className="text-sm text-gray-500">Completed Tasks</div>
-                </motion.div>
-                <motion.div className="text-center" variants={staggerItem}>
-                  <div className="text-3xl font-bold text-purple-600">{stats.overallProgress}%</div>
-                  <div className="text-sm text-gray-500">Overall Progress</div>
-                </motion.div>
-              </motion.div>
-            )}
-          </div>
-        </motion.div>
-
-        {/* Quick Actions */}
-        <motion.div 
-          className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8"
-          variants={staggerContainer}
-          initial="initial"
-          animate="animate"
-        >
-          <motion.div variants={cardHover} whileHover="hover">
+      <motion.div
+        className="min-h-screen pt-20 px-6 pb-6 relative z-10"
+        variants={fadeIn}
+        initial="initial"
+        animate="animate"
+      >
+        <div className="max-w-7xl mx-auto">
+          {/* Header */}
+          <motion.div
+            className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-6 sm:space-y-0 mb-12"
+            variants={slideUp}
+          >
+            <div className="space-y-2">
+              <h1 className="text-5xl font-bold text-white leading-tight text-shadow-lg">
+                Welcome Back!
+              </h1>
+              <h2 className="text-3xl font-semibold gradient-text">
+                Your Progress Dashboard
+              </h2>
+              <p className="text-white/70 text-lg max-w-2xl">
+                Track your objectives, monitor progress, and achieve your goals with clarity and purpose.
+              </p>
+            </div>
             <Button
               onClick={() => navigate("/okr/new")}
-              className="glass-card w-full h-24 p-4 text-center bg-transparent hover:bg-white/10 border border-white/20 text-gray-800 hover:text-gray-900"
+              className="bg-gradient-to-r from-purple-500 via-indigo-500 to-blue-500 hover:from-purple-600 hover:via-indigo-600 hover:to-blue-600 text-white font-semibold py-4 px-8 rounded-2xl shadow-2xl transition-all duration-300 ease-out transform hover:-translate-y-1 hover:scale-105 flex items-center group"
             >
-              <div className="flex flex-col items-center space-y-2">
-                <div className="w-8 h-8 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center">
-                  <Plus className="text-white text-sm" />
-                </div>
-                <span className="text-sm font-medium">New OKR</span>
-              </div>
+              <Plus className="w-5 h-5 mr-3 group-hover:rotate-90 transition-transform duration-300" />
+              Create New OKR
+              <Sparkles className="w-4 h-4 ml-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
             </Button>
           </motion.div>
 
-          <motion.div variants={cardHover} whileHover="hover">
-            <Button className="glass-card w-full h-24 p-4 text-center bg-transparent hover:bg-white/10 border border-white/20 text-gray-800 hover:text-gray-900">
-              <div className="flex flex-col items-center space-y-2">
-                <div className="w-8 h-8 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center">
-                  <CheckSquare className="text-white text-sm" />
-                </div>
-                <span className="text-sm font-medium">My Tasks</span>
-              </div>
-            </Button>
-          </motion.div>
-
-          <motion.div variants={cardHover} whileHover="hover">
-            <Button className="glass-card w-full h-24 p-4 text-center bg-transparent hover:bg-white/10 border border-white/20 text-gray-800 hover:text-gray-900">
-              <div className="flex flex-col items-center space-y-2">
-                <div className="w-8 h-8 bg-gradient-to-r from-pink-500 to-rose-600 rounded-lg flex items-center justify-center">
-                  <TrendingUp className="text-white text-sm" />
-                </div>
-                <span className="text-sm font-medium">Progress</span>
-              </div>
-            </Button>
-          </motion.div>
-
-          <motion.div variants={cardHover} whileHover="hover">
-            <Button className="glass-card w-full h-24 p-4 text-center bg-transparent hover:bg-white/10 border border-white/20 text-gray-800 hover:text-gray-900">
-              <div className="flex flex-col items-center space-y-2">
-                <div className="w-8 h-8 bg-gradient-to-r from-amber-500 to-orange-600 rounded-lg flex items-center justify-center">
-                  <Bell className="text-white text-sm" />
-                </div>
-                <span className="text-sm font-medium">Reminders</span>
-              </div>
-            </Button>
-          </motion.div>
-        </motion.div>
-
-        {/* Main Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Left Column - OKRs and Tasks */}
-          <div className="lg:col-span-2 space-y-8">
-            
-            {/* Active OKRs */}
-            <motion.div 
-              className="glass-card rounded-3xl p-6"
-              variants={slideUp}
-              initial="initial"
-              animate="animate"
-            >
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-2xl font-bold text-gray-800">Active OKRs</h3>
-                <Badge variant="secondary" className="bg-indigo-100 text-indigo-800">
-                  {okrs?.filter(okr => okr.status === "active").length || 0} Active
-                </Badge>
-              </div>
-              
-              <AnimatePresence>
-                <motion.div 
-                  className="space-y-4"
-                  variants={staggerContainer}
-                  animate="animate"
-                >
-                  {okrs?.filter(okr => okr.status === "active").map((okr) => (
-                    <motion.div
-                      key={okr.id}
-                      className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-2xl p-6 border border-indigo-100"
-                      variants={staggerItem}
-                      whileHover={{ scale: 1.02 }}
-                      layout
-                    >
-                      <div className="flex items-start justify-between mb-4">
-                        <div>
-                          <h4 className="font-semibold text-gray-800 mb-2">{okr.title}</h4>
-                          <p className="text-sm text-gray-600">
-                            Timeline: {new Date(okr.targetDate).toLocaleDateString()}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-2xl font-bold text-indigo-600">{okr.progress}%</div>
-                          <div className="text-xs text-gray-500">Complete</div>
-                        </div>
-                      </div>
-                      
-                      <Progress value={okr.progress} className="mb-4" />
-                      
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-600">
-                          {okr.completedTasks} of {okr.totalTasks} tasks completed
-                        </span>
-                        <Badge 
-                          variant={okr.progress >= 70 ? "default" : "secondary"}
-                          className={okr.progress >= 70 ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}
-                        >
-                          {okr.progress >= 70 ? "On Track 🎯" : "Needs Attention ⚠️"}
-                        </Badge>
-                      </div>
-                    </motion.div>
-                  ))}
-                </motion.div>
-              </AnimatePresence>
+          {/* Enhanced Stats Grid */}
+          <motion.div
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12"
+            variants={staggerContainer}
+            initial="initial"
+            animate="animate"
+          >
+            <motion.div variants={staggerItem}>
+              <Card className="glass-card glass-card-hover rounded-3xl p-8 group">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 p-0">
+                  <div>
+                    <CardTitle className="text-lg font-semibold text-blue-880 mb-1">Active OKRs</CardTitle>
+                    <p className="text-blue-600 text-sm">Objectives in progress</p>
+                  </div>
+                  <div className="p-3 bg-gradient-to-r from-indigo-500/20 to-purple-500/20 rounded-2xl">
+                    <Target className="w-7 h-7 text-indigo-300 group-hover:scale-110 transition-transform duration-300" />
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0 pt-4">
+                  <div className="text-5xl font-bold text-blue-800 mb-2">{stats.activeOkrs}</div>
+                  <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+                    <motion.div 
+                      className="h-full bg-gradient-to-r from-indigo-400 to-purple-400 rounded-full"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${Math.min(stats.activeOkrs * 20, 100)}%` }}
+                      transition={{ duration: 1, delay: 0.5 }}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
             </motion.div>
 
-            {/* Task Dashboard */}
-            <motion.div 
-              className="glass-card rounded-3xl p-6"
-              variants={slideUp}
-              initial="initial"
-              animate="animate"
-            >
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-2xl font-bold text-gray-800">Today's Tasks</h3>
-                <div className="flex space-x-2">
-                  <Select value={taskFilter} onValueChange={setTaskFilter}>
-                    <SelectTrigger className="w-32">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All</SelectItem>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="completed">Completed</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  
-                  <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-                    <SelectTrigger className="w-32">
-                      <SelectValue placeholder="Priority" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Priority</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="low">Low</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+            <motion.div variants={staggerItem}>
+              <Card className="glass-card glass-card-hover rounded-3xl p-8 group">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 p-0">
+                  <div>
+                    <CardTitle className="text-lg font-semibold text-black/90 mb-1">Tasks Completed</CardTitle>
+                    <p className="text-black/60 text-sm">Across all objectives</p>
+                  </div>
+                  <div className="p-3 bg-gradient-to-r from-emerald-500/20 to-teal-500/20 rounded-2xl">
+                    <CheckSquare className="w-7 h-7 text-emerald-300 group-hover:scale-110 transition-transform duration-300" />
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0 pt-4">
+                  <div className="text-5xl font-bold text-black mb-2">{stats.completedTasks}</div>
+                  <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+                    <motion.div 
+                      className="h-full bg-gradient-to-r from-emerald-400 to-teal-400 rounded-full"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${Math.min(stats.completedTasks * 10, 100)}%` }}
+                      transition={{ duration: 1, delay: 0.7 }}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            <motion.div variants={staggerItem}>
+              <Card className="glass-card glass-card-hover rounded-3xl p-8 group">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 p-0">
+                  <div>
+                    <CardTitle className="text-lg font-semibold text-red-500 mb-1">Overall Progress</CardTitle>
+                    <p className="text-black text-sm">Average completion rate</p>
+                  </div>
+                  <div className="p-3 bg-gradient-to-r from-pink-500/20 to-rose-500/20 rounded-2xl">
+                    <TrendingUp className="w-7 h-7 text-pink-300 group-hover:scale-110 transition-transform duration-300" />
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0 pt-4">
+                  <div className="text-5xl font-bold text-red-700 mb-4">{stats.overallProgress}%</div>
+                  <div className="relative">
+                    <Progress 
+                      value={stats.overallProgress} 
+                      className="h-3 bg-white/10" 
+                      indicatorClassName="bg-gradient-to-r from-pink-400 to-rose-400"
+                    />
+                    <motion.div
+                      className="absolute top-0 left-0 h-3 bg-gradient-to-r from-pink-400 to-rose-400 rounded-full"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${stats.overallProgress}%` }}
+                      transition={{ duration: 1.5, delay: 0.9 }}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </motion.div>
+
+          {/* Enhanced Tabs */}
+          <Tabs defaultValue="okrs" className="w-full">
+            <motion.div variants={slideUp}>
+              <TabsList className="grid w-full grid-cols-3 gap-2 bg-white/10 backdrop-blur-xl rounded-2xl p-0 mb-8 border border-white/20">
+                <TabsTrigger 
+                  value="okrs" 
+                  className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-indigo-500 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all duration-300 rounded-xl py-3 text-white/80 hover:text-white font-medium"
+                >
+                  <Target className="w-4 h-4 mr-2" /> 
+                  OKRs
+                  <Badge variant="secondary" className="ml-2 bg-white/20 text-white/80 text-xs">
+                    {stats.activeOkrs}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="tasks" 
+                  className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-indigo-500 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all duration-300 rounded-xl py-3 text-white/80 hover:text-white font-medium"
+                >
+                  <CheckSquare className="w-4 h-4 mr-2" /> 
+                  Tasks
+                  <Badge variant="secondary" className="ml-2 bg-white/20 text-white/80 text-xs">
+                    {tasks.length}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="reminders" 
+                  className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-indigo-500 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all duration-300 rounded-xl py-3 text-white/80 hover:text-white font-medium"
+                >
+                  <Bell className="w-4 h-4 mr-2" /> 
+                  Reminders
+                  <Badge variant="secondary" className="ml-2 bg-/20 text-white/80 text-xs">
+                    {reminders.length}
+                  </Badge>
+                </TabsTrigger>
+              </TabsList>
+            </motion.div>
+
+            <TabsContent value="okrs">
+              <motion.div
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+                variants={staggerContainer}
+                initial="initial"
+                animate="animate"
+              >
+                {okrs.length > 0 ? (
+                  okrs.map(okr => (
+                    <motion.div key={okr.id} variants={staggerItem}>
+                      <Card className="glass-card glass-card-hover rounded-3xl p-8 group h-full flex flex-col">
+                        <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-6 p-0">
+                          <div className="flex-1">
+                            <CardTitle className="text-xl font-bold text-black/95 mb-2 line-clamp-2 group-hover:text-black transition-colors duration-300">
+                              {okr.title}
+                            </CardTitle>
+                            <Badge 
+                              variant="outline" 
+                              className="bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-indigo-300 border-indigo-400/30 capitalize font-medium"
+                            >
+                              {okr.status}
+                            </Badge>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="p-0 flex-1 flex flex-col">
+                          <p className="text-black text-sm mb-6 line-clamp-3 flex-1">
+                            {okr.description}
+                          </p>
+                          <div className="space-y-4">
+                            <div className="flex items-center text-purple-700 text-sm">
+                              <Calendar className="w-4 h-4 mr-3 text-purple-300" />
+                              <span>Target: {new Date(okr.targetDate).toLocaleDateString()}</span>
+                            </div>
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center text-sm">
+                                <span className="text-black font-medium">Progress</span>
+                                <span className="text-black font-bold">{okr.progress}%</span>
+                              </div>
+                              <Progress 
+                                value={okr.progress} 
+                                className="h-3 bg-black/10" 
+                                indicatorClassName="bg-gradient-to-r from-purple-400 to-indigo-400"
+                              />
+
+                              {/* Need to check */}
+                              <p className="text-black text-xs"> 
+                                {okr.completedTasks} of {okr.totalTasks} tasks completed
+                              </p>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="w-full text-purple-300 hover:bg-purple-500/20 hover:text-purple-200 transition-all duration-300 rounded-xl mt-4 font-medium"
+                              onClick={() => navigate(`/okr/${okr.id}`)}
+                            >
+                              View Details →
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  ))
+                ) : (
+                  <motion.div variants={staggerItem} className="lg:col-span-3 text-center py-16">
+                    <div className="glass-card rounded-3xl p-12 max-w-md mx-auto">
+                      <Target className="w-16 h-16 text-black/40 mx-auto mb-6" />
+                      <h3 className="text-2xl font-bold text-black mb-3">No OKRs Found</h3>
+                      <p className="text-white/60 mb-8 leading-relaxed">
+                        Start your journey by creating your first Objective and Key Results.
+                      </p>
+                      <Button
+                        onClick={() => navigate("/submit-okr")}
+                        className="bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white font-semibold py-3 px-8 rounded-xl shadow-lg transition-all duration-300 transform hover:-translate-y-1"
+                      >
+                        <Plus className="w-5 h-5 mr-2" />
+                        Create New OKR
+                      </Button>
+                    </div>
+                  </motion.div>
+                )}
+              </motion.div>
+            </TabsContent>
+
+            <TabsContent value="tasks">
+              <div className="flex flex-col sm:flex-row gap-6 mb-8">
+                <Select value={taskFilter} onValueChange={setTaskFilter}>
+                  <SelectTrigger className="w-[200px] glass-button border-white/20 text-black">
+                    <Filter className="w-4 h-4 mr-2" />
+                    <SelectValue placeholder="Filter by Status" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white backdrop-blur-xl border-black/20">
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
-              <AnimatePresence>
-                <motion.div 
-                  className="space-y-3"
-                  variants={staggerContainer}
-                  animate="animate"
-                >
-                  {todaysTasks?.map(task => (
+              <motion.div
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+                variants={staggerContainer}
+                initial="initial"
+                animate="animate"
+              >
+                {filteredTasks.length > 0 ? (
+                  filteredTasks.map(task => (
                     <TaskCard
                       key={task.id}
                       task={task}
                       onComplete={handleCompleteTask}
-                      onUpdate={handleUpdateTask}
                     />
-                  ))}
-                </motion.div>
-              </AnimatePresence>
-
-              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                <Button
-                  onClick={() => navigate("/okr/new")}
-                  className="w-full mt-6 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-medium py-3 px-4 rounded-xl"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add New Task
-                </Button>
-              </motion.div>
-            </motion.div>
-          </div>
-
-          {/* Right Column - Progress and Reminders */}
-          <div className="space-y-8">
-            
-            {/* Progress Overview */}
-            <motion.div 
-              className="glass-card rounded-3xl p-6"
-              variants={slideUp}
-              initial="initial"
-              animate="animate"
-            >
-              <h3 className="text-xl font-bold text-gray-800 mb-6">Progress Overview</h3>
-              
-              {stats && (
-                <ProgressChart
-                  overallProgress={stats.overallProgress}
-                  weeklyProgress={stats.weeklyProgress}
-                  monthlyProgress={stats.monthlyProgress}
-                />
-              )}
-            </motion.div>
-
-            {/* Reminder Center */}
-            <motion.div 
-              className="glass-card rounded-3xl p-6"
-              variants={slideUp}
-              initial="initial"
-              animate="animate"
-            >
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-bold text-gray-800">Upcoming Reminders</h3>
-                {stats && stats.upcomingReminders > 0 && (
-                  <Badge variant="destructive" className="notification-badge">
-                    {stats.upcomingReminders}
-                  </Badge>
+                  ))
+                ) : (
+                  <motion.div variants={staggerItem} className="lg:col-span-3 text-center py-16">
+                    <div className="glass-card rounded-3xl p-12 max-w-md mx-auto">
+                      <CheckSquare className="w-16 h-16 text-/40 mx-auto mb-6" />
+                      <h3 className="text-2xl font-bold text-purple-800 mb-3">No Tasks Found</h3>
+                      <p className="text-black/60 leading-relaxed">
+                        Looks like you're all caught up, or haven't created any tasks yet!
+                      </p>
+                    </div>
+                  </motion.div>
                 )}
+              </motion.div>
+            </TabsContent>
+
+            <TabsContent value="reminders">
+              <div className="flex flex-col sm:flex-row gap-6 mb-8">
+                <div className="flex items-center space-x-4">
+                  <h2 className="text-2xl font-bold text-white">Upcoming Reminders</h2>
+                  <Badge className="bg-gradient-to-r from-purple-500/20 to-indigo-500/20 text-purple-300 border-purple-400/30">
+                    {reminders.length} total
+                  </Badge>
+                </div>
               </div>
 
-              <AnimatePresence>
-                <motion.div 
-                  className="space-y-4"
-                  variants={staggerContainer}
-                  animate="animate"
-                >
-                  {reminders?.slice(0, 3).map(reminder => (
+              <motion.div
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+                variants={staggerContainer}
+                initial="initial"
+                animate="animate"
+              >
+                {reminders.length > 0 ? (
+                  reminders.map(reminder => (
                     <ReminderCard
                       key={reminder.id}
                       reminder={reminder}
-                      onStatusChange={handleStatusChange}
                     />
-                  ))}
-                </motion.div>
-              </AnimatePresence>
-            </motion.div>
-
-            {/* Achievement Badges */}
-            <motion.div 
-              className="glass-card rounded-3xl p-6"
-              variants={slideUp}
-              initial="initial"
-              animate="animate"
-            >
-              <h3 className="text-xl font-bold text-gray-800 mb-6">Recent Achievements</h3>
-              
-              <motion.div 
-                className="grid grid-cols-2 gap-4"
-                variants={staggerContainer}
-                animate="animate"
-              >
-                <motion.div 
-                  className="text-center p-4 bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl border border-yellow-200"
-                  variants={staggerItem}
-                  whileHover={{ scale: 1.05 }}
-                >
-                  <div className="text-3xl mb-2">🏆</div>
-                  <div className="text-sm font-medium text-gray-800">Task Master</div>
-                  <div className="text-xs text-gray-500">10 tasks completed</div>
-                </motion.div>
-                
-                <motion.div 
-                  className="text-center p-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl border border-purple-200"
-                  variants={staggerItem}
-                  whileHover={{ scale: 1.05 }}
-                >
-                  <div className="text-3xl mb-2">🎯</div>
-                  <div className="text-sm font-medium text-gray-800">On Target</div>
-                  <div className="text-xs text-gray-500">75% OKR progress</div>
-                </motion.div>
-                
-                <motion.div 
-                  className="text-center p-4 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl border border-green-200"
-                  variants={staggerItem}
-                  whileHover={{ scale: 1.05 }}
-                >
-                  <div className="text-3xl mb-2">⚡</div>
-                  <div className="text-sm font-medium text-gray-800">Speed Demon</div>
-                  <div className="text-xs text-gray-500">5 tasks in one day</div>
-                </motion.div>
-                
-                <motion.div 
-                  className="text-center p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200"
-                  variants={staggerItem}
-                  whileHover={{ scale: 1.05 }}
-                >
-                  <div className="text-3xl mb-2">🔥</div>
-                  <div className="text-sm font-medium text-gray-800">Streak</div>
-                  <div className="text-xs text-gray-500">7 days active</div>
-                </motion.div>
+                  ))
+                ) : (
+                  <motion.div variants={staggerItem} className="lg:col-span-3 text-center py-16">
+                    <div className="glass-card rounded-3xl p-12 max-w-md mx-auto">
+                      <Bell className="w-16 h-16 text-black/40 mx-auto mb-6" />
+                      <h3 className="text-2xl font-bold text-black/90 mb-3">No Reminders</h3>
+                      <p className="text-black/60 leading-relaxed">
+                        You're all set! No upcoming reminders at the moment.
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
               </motion.div>
-            </motion.div>
-          </div>
+            </TabsContent>
+          </Tabs>
         </div>
-      </div>
-    </motion.div>
+      </motion.div>
+    </div>
   );
 };
 
