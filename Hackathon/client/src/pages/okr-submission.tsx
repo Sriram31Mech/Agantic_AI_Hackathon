@@ -16,6 +16,7 @@ import { InsertOkr, Okr } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { fadeIn, slideUp, scaleIn, celebrate } from "@/lib/animations";
+import { z } from "zod";
 
 type SubmissionState = "form" | "processing" | "parsed" | "success";
 
@@ -46,6 +47,12 @@ interface CreateOkrResponse {
     level: string;
   }>;
 }
+
+const formSchema = z.object({
+  title: z.string().min(1, { message: "Title is required." }),
+  description: z.string().min(1, { message: "Description is required." }),
+  targetDate: z.string().min(1, { message: "Target date is required." }),
+});
 
 const OkrSubmission = () => {
   const [, navigate] = useLocation();
@@ -105,6 +112,14 @@ const OkrSubmission = () => {
   });
 
   const handleSubmit: SubmitHandler<InsertOkr> = (data) => {
+    if (!data.title || !data.description || !data.targetDate) {
+      toast({
+        title: "Error",
+        description: "All fields are required.",
+        variant: "destructive",
+      });
+      return;
+    }
     createOkrMutation.mutate(data);
   };
 
@@ -180,6 +195,7 @@ const OkrSubmission = () => {
                                 placeholder="e.g., Publish 3 AI articles by Q4"
                                 className="text-lg py-3"
                                 {...field}
+                                required
                               />
                             </FormControl>
                             <FormDescription>
@@ -205,6 +221,7 @@ const OkrSubmission = () => {
                                 placeholder="Describe your objective in detail. Include specific deliverables, success criteria, and any relevant context. The more detail you provide, the better AI can generate actionable micro-tasks."
                                 className="min-h-32 text-base resize-none"
                                 {...field}
+                                required
                               />
                             </FormControl>
                             <FormDescription>
@@ -232,6 +249,7 @@ const OkrSubmission = () => {
                                   className="text-lg py-3"
                                   value={field.value instanceof Date ? field.value.toISOString().split('T')[0] : field.value}
                                   onChange={field.onChange}
+                                  required
                                 />
                               </FormControl>
                               <FormDescription>
