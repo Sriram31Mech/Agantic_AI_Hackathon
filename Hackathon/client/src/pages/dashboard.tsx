@@ -1,21 +1,17 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Target, CheckSquare, TrendingUp, Bell, Calendar, Award, Filter, Sparkles, BarChart3, Star, Zap } from "lucide-react";
+import { Plus, Target, CheckSquare, TrendingUp, Bell, Calendar, Award, Sparkles, BarChart3, Star, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import TaskCard from "@/components/task-card";
-import ReminderCard from "@/components/reminder-card";
-import ProgressChart from "@/components/progress-chart";
 import PerformanceAnalytics from "@/components/PerformanceAnalytics";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { fadeIn, slideUp, staggerContainer, staggerItem, bounce, cardHover } from "@/lib/animations";
-import { OkrWithTasks, Task, Reminder } from "@shared/schema";
+import { OkrWithTasks, Notification } from "@shared/schema";
 import { useState } from "react";
 import TrendIndicator from "@/components/TrendIndicator";
 
@@ -53,7 +49,6 @@ interface DashboardStats {
     total: number;
     percentage: number;
   };
-  upcomingReminders: number;
   streak: number;
 }
 
@@ -61,7 +56,12 @@ const Dashboard = () => {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [taskFilter, setTaskFilter] = useState<string>("all");
+  const [showNotifications, setShowNotifications] = useState<boolean>(false);
+  const [notifications, setNotifications] = useState<Notification[]>([
+    { id: "1", message: "Your OKR 'Publish AI Articles' is due soon!", type: "warning", read: false, createdAt: new Date() },
+    { id: "2", message: "Task 'Research on LLM' completed. Great job!", type: "success", read: true, createdAt: new Date(Date.now() - 86400000) },
+    { id: "3", message: "New feature: Performance Analytics available!", type: "info", read: false, createdAt: new Date() },
+  ]);
 
   // Fetch OKRs data from the single endpoint
   const { data: okrResponse, isLoading: okrsLoading } = useQuery<{ result: OkrResponse[] }>({
@@ -101,50 +101,8 @@ const Dashboard = () => {
     overallProgress: calculateOverallProgress(okrs),
     weeklyProgress: calculateWeeklyProgress(okrs),
     monthlyProgress: calculateMonthlyProgress(okrs),
-    upcomingReminders: okrs.reduce((sum, okr) => {
-      return sum + okr.tasks.filter(task => {
-        const taskDeadline = new Date(task.deadline);
-        const sevenDaysFromNow = new Date();
-        sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
-        return taskDeadline <= sevenDaysFromNow && task.status === "pending";
-      }).length;
-    }, 0),
     streak: calculateStreak(okrs),
   };
-
-  // Get all tasks from all OKRs
-  const tasks: Task[] = okrs.flatMap(okr => okr.tasks);
-
-  // Use tasks as reminders for the reminders section
-  const reminders: Reminder[] = tasks.map(task => ({
-    id: task.id,
-    title: task.title,
-    description: task.description || null,
-    dueDate: new Date(task.deadline),
-    status: 'pending',
-    scheduledFor: new Date(task.deadline),
-    createdAt: new Date(),
-    taskId: task.id,
-    message: task.description || `Reminder for ${task.title}`,
-    deliveryMethod: 'dashboard',
-    sentAt: null,
-  }));
-
-  // Filter tasks based on selected filters
-  const filteredTasks = tasks?.filter(task => {
-    if (taskFilter === "pending" && task.status !== "pending") return false;
-    if (taskFilter === "completed" && task.status !== "completed") return false;
-    return true;
-  });
-
-  // Get today's tasks
-  const todaysTasks = filteredTasks?.filter(task => {
-    const deadline = new Date(task.deadline);
-    const today = new Date();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return deadline <= tomorrow && task.status === "pending";
-  });
 
   const handleCompleteTask = (id: number) => {
     queryClient.invalidateQueries({ queryKey: ["/api/get-okrs"] });
@@ -184,7 +142,7 @@ const Dashboard = () => {
     const totalTasks = okr.micro_tasks.length;
     if (totalTasks === 0) return 0;
 
-    const completedTasks = okr.micro_tasks.filter(task => task.level === 'hard').length;
+    const completedTasks = okr.micro_tasks.filter(task => task.level === 'completed').length;
     return Math.round((completedTasks / totalTasks) * 100);
   }
 
@@ -291,20 +249,61 @@ const Dashboard = () => {
                 <h1 className="text-xl font-bold text-white">OKR Tracker</h1>
               </div>
               <div className="flex items-center space-x-4">
-                <Button variant="ghost" size="sm" className="text-white hover:bg-white/10 relative">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-white hover:bg-white/10 relative"
+                  onClick={() => setShowNotifications(!showNotifications)}
+                >
                   <Bell className="w-4 h-4" />
-                  {stats && stats.upcomingReminders > 0 && (
-                    <motion.span
-                      className="notification-badge absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"
-                      animate={{ scale: [1, 1.2, 1] }}
-                      transition={{ repeat: Infinity, duration: 1 }}
-                    />
-                  )}
                 </Button>
               </div>
             </div>
           </motion.nav>
 
+          {/* Notification Popover */}
+          <AnimatePresence>
+            {showNotifications && (
+              <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="absolute top-20 right-6 w-80 bg-slate-800 border border-slate-700 rounded-lg shadow-lg z-50 p-4"
+              >
+                <h3 className="text-white font-bold mb-4">Notifications</h3>
+                {notifications.length === 0 ? (
+                  <p className="text-gray-400">No new notifications.</p>
+                ) : (
+                  <ul className="space-y-3">
+                    {notifications.map((notification) => (
+                      <li key={notification.id} className="flex items-start space-x-3">
+                        <div className="flex-shrink-0">
+                          {notification.type === "success" && <CheckSquare className="w-5 h-5 text-green-400" />}
+                          {notification.type === "warning" && <Bell className="w-5 h-5 text-yellow-400" />}
+                          {notification.type === "info" && <Sparkles className="w-5 h-5 text-blue-400" />}
+                          {notification.type === "error" && <Zap className="w-5 h-5 text-red-400" />}
+                        </div>
+                        <div>
+                          <p className={`text-sm ${notification.read ? "text-gray-500" : "text-white"}`}>
+                            {notification.message}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {new Date(notification.createdAt).toLocaleString()}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <Button
+                  onClick={() => setShowNotifications(false)}
+                  className="mt-4 w-full bg-blue-500 hover:bg-blue-600 text-white"
+                >
+                  Close
+                </Button>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Header */}
           <motion.div
@@ -484,79 +483,22 @@ const Dashboard = () => {
             </motion.div>
           </motion.div>
 
-            {/* Enhanced Tabs */}
+          {/* Enhanced Tabs */}
+          <div className="flex-1">
             <Tabs defaultValue="okrs" className="w-full">
-              <motion.div variants={slideUp}>
-                <TabsList className="grid w-full grid-cols-4 gap-2 bg-white/10 backdrop-blur-xl rounded-2xl p-0 mb-8 border border-white/20">
-                  <TabsTrigger
-                    value="okrs"
-                    className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-indigo-500 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all duration-300 rounded-xl py-3 text-white/80 hover:text-white font-medium"
-                  >
-                    <Target className="w-4 h-4 mr-2" />
-                    OKRs
-                    <Badge variant="secondary" className="ml-2 bg-white/20 text-white/80 text-xs">
-                      {stats.activeOkrs}
-                    </Badge>
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="tasks"
-                    className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-indigo-500 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all duration-300 rounded-xl py-3 text-white/80 hover:text-white font-medium"
-                  >
-                    <CheckSquare className="w-4 h-4 mr-2" />
-                    Tasks
-                    <Badge variant="secondary" className="ml-2 bg-white/20 text-white/80 text-xs">
-                      {tasks.length}
-                    </Badge>
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="reminders"
-                    className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-indigo-500 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all duration-300 rounded-xl py-3 text-white/80 hover:text-white font-medium"
-                  >
-                    <Bell className="w-4 h-4 mr-2" />
-                    Reminders
-                    <Badge variant="secondary" className="ml-2 bg-/20 text-white/80 text-xs">
-                      {reminders.length}
-                    </Badge>
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="performance-analytics"
-                    className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-indigo-500 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all duration-300 rounded-xl py-3 text-white/80 hover:text-white font-medium"
-                  >
-                    <BarChart3 className="w-4 h-4 mr-2" />
-                    Performance Analysis
-                  </TabsTrigger>
-                </TabsList>
-              </motion.div>
-
-            <TabsContent value="okrs">
-              {/* OKRs Content */}
-              <div className="space-y-6">
-                <motion.div variants={staggerItem} initial="initial" animate="animate">
-                  <Button
-                    onClick={() => navigate("/okr/new")}
-                    className="w-full py-3 text-lg font-semibold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl shadow-lg transition-all duration-300 transform hover:scale-105 flex items-center justify-center gap-2"
-                  >
-                    <Plus className="w-5 h-5" /> Create New OKR
-                  </Button>
-                </motion.div>
-                {okrs.length === 0 ? (
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                    className="text-center text-white/70 py-10 border border-white/20 rounded-2xl backdrop-blur-md"
-                  >
-                    <p className="text-lg mb-2">No OKRs found.</p>
-                    <p>Start by creating your first Objective and Key Result!</p>
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-                    variants={staggerContainer}
-                    initial="initial"
-                    animate="animate"
-                  >
-                    {okrs.map((okr) => (
+              <TabsList className="grid w-full grid-cols-2 bg-purple-900/50 backdrop-filter backdrop-blur-lg rounded-xl shadow-lg p-1">
+                <TabsTrigger value="okrs" className="text-white data-[state=active]:bg-purple-700/70 data-[state=active]:shadow-md transition-all duration-300 rounded-lg">OKRs</TabsTrigger>
+                <TabsTrigger value="analytics" className="text-white data-[state=active]:bg-purple-700/70 data-[state=active]:shadow-md transition-all duration-300 rounded-lg">Analytics</TabsTrigger>
+              </TabsList>
+              <TabsContent value="okrs" className="mt-8">
+                <motion.div
+                  className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+                  variants={staggerContainer}
+                  initial="hidden"
+                  animate="show"
+                >
+                  {okrs.length > 0 ? (
+                    okrs.map((okr, i) => (
                       <motion.div key={okr.id} variants={staggerItem}>
                         <Card className="glass-card rounded-2xl p-6 relative overflow-hidden group h-full flex flex-col">
                           <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 via-transparent to-indigo-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -583,7 +525,6 @@ const Dashboard = () => {
                                 indicatorClassName="bg-gradient-to-r from-purple-400 to-indigo-400"
                               />
                               <p className="text-right text-black/60 text-xs mt-1">{okr.progress}% Completed</p> 
-                              {/* need to change*/}
                             </div>
                             <p className="text-white/6 text-xs mb-2">{okr.completedTasks} / {okr.totalTasks} Tasks Completed</p>
                             <Button
@@ -595,95 +536,27 @@ const Dashboard = () => {
                           </CardContent>
                         </Card>
                       </motion.div>
-                    ))}
-                  </motion.div>
-                )}
-              </div>
-            </TabsContent>
-
-            <TabsContent value="tasks">
-              {/* Tasks Content */}
-              <div className="space-y-6">
-                <motion.div variants={staggerItem} initial="initial" animate="animate">
-                  <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-3xl font-bold text-white">All Tasks</h2>
-                    <Select onValueChange={setTaskFilter} defaultValue={taskFilter}>
-                      <SelectTrigger className="w-[180px] bg-white/10 text-white border-white/20">
-                        <SelectValue placeholder="Filter tasks" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-slate-800 text-white border-slate-700">
-                        <SelectItem value="all">All</SelectItem>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="completed">Completed</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                    ))
+                  ) : (
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.2 }}
+                      className="text-center text-white/70 py-10 border border-white/20 rounded-2xl backdrop-blur-md"
+                    >
+                      <p className="text-lg mb-2">No OKRs found.</p>
+                      <p>Start by creating your first Objective and Key Result!</p>
+                    </motion.div>
+                  )}
                 </motion.div>
-                {filteredTasks.length === 0 ? (
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                    className="text-center text-white/70 py-10 border border-white/20 rounded-2xl backdrop-blur-md"
-                  >
-                    <p className="text-lg mb-2">No tasks found matching the filter.</p>
-                    <p>Try adjusting your filter or creating new OKRs!</p>
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-                    variants={staggerContainer}
-                    initial="initial" 
-                    animate="animate"
-                  >
-                    {filteredTasks.map((task) => (
-                      <motion.div key={task.id} variants={staggerItem}>
-                        <TaskCard task={task} onComplete={handleCompleteTask} />
-                      </motion.div>
-                    ))}
-                  </motion.div>
-                )}
-              </div>
-            </TabsContent>
+              </TabsContent>
 
-            <TabsContent value="reminders">
-              {/* Reminders Content */}
-              <div className="space-y-6">
-                <motion.div variants={staggerItem} initial="initial" animate="animate">
-                  <h2 className="text-3xl font-bold text-white mb-4">Upcoming Reminders</h2>
-                </motion.div>
-                {reminders.length === 0 ? (
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                    className="text-center text-white/70 py-10 border border-white/20 rounded-2xl backdrop-blur-md"
-                  >
-                    <p className="text-lg mb-2">No reminders found.</p>
-                    <p>All clear! You're on top of everything.</p>
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-                    variants={staggerContainer}
-                    initial="initial" 
-                    animate="animate"
-                  >
-                    {reminders.map((reminder) => (
-                      <motion.div key={reminder.id} variants={staggerItem}>
-                        <ReminderCard reminder={reminder} />
-                      </motion.div>
-                    ))}
-                  </motion.div>
-                )}
-              </div>
-            </TabsContent>
-
-            <TabsContent value="performance-analytics">
-              {/* Performance Analytics Content */}
-              <PerformanceAnalytics />
-            </TabsContent>
-          </Tabs>
+              <TabsContent value="analytics">
+                {/* Performance Analytics Content */}
+                <PerformanceAnalytics />
+              </TabsContent>
+            </Tabs>
+          </div>
         </div>
       </motion.div>
     </div>

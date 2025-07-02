@@ -56,7 +56,8 @@ Return EXACT JSON:
     "task": "string",
     "due": "YYYY-MM-DD",
     "evidence_hint": "text|git-url|youtube-url|linkedIn-url|screenshot|other-url|pdf",
-    "level": "easy|medium|hard"
+    "level": "easy|medium|hard",
+    "micro_status": "pending"
   }}
 ]
 """,

@@ -47,6 +47,7 @@ from fastapi.middleware.cors import CORSMiddleware  # 👈 Import CORS middlewar
 from routes.task_routes import task_router
 from routes.reminder_routes import reminder_router
 from routes.dashboard_routes import dashboard_router
+from routes.okr_routes import okr_router
 
 app = FastAPI(
     title="OKR Management AI Backend",
@@ -57,14 +58,14 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Allow your frontend origin
+    allow_origins=["http://localhost:5173"], 
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
 # Include routers
-# app.include_router(okr_router, prefix="/api") # Removed as okr_routes.py is deleted
+app.include_router(okr_router, prefix="/api")
 app.include_router(task_router, prefix="/api")
 app.include_router(reminder_router, prefix="/api")
 app.include_router(dashboard_router, prefix="/api")
@@ -84,6 +85,7 @@ class MicroTask(BaseModel):
     due: str
     evidence_hint: str
     level: str
+    micro_status: str = "pending"
 
 class OKRResponse(BaseModel):
     parsed: dict
@@ -114,7 +116,8 @@ def process_okr(input_data: OKRInput):
         "description": input_data.description,
         "targetDate": str(input_data.targetDate),
         "parsed": parsed,
-        "micro_tasks": micro_tasks
+        "micro_tasks": micro_tasks,
+        "status": "active"
     }
 
     try:

@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useRoute, useLocation } from "wouter";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import FileUploaderTest from '@/components/ui/FileUploaderTest';
+import { useToast } from "@/hooks/use-toast";
 
 const API_BASE = "http://localhost:8000/api/get-okr";
 
@@ -12,27 +13,36 @@ const OkrDetails = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openAccordion, setOpenAccordion] = useState<number | null>(null);
-  const [evidenceValues, setEvidenceValues] = useState<{ [idx: number]: string | File }>({});
+  const [evidenceValues, setEvidenceValues] = useState<{ [idx: number]: string | File[] }>({});
+  const [selectedFile, setSelectedFile] = useState<File[] | null>(null);
+  const { toast } = useToast();
 
-  useEffect(() => {
+  const generateSubmissionId = (taskId: string) => {
+    return `${taskId}-${Date.now()}`;
+  };
+
+  const fetchOkrDetails = useCallback(async () => {
     if (!params?.id) return;
     setLoading(true);
     setError(null);
-    fetch(`${API_BASE}/${params.id}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.result) {
-          setOkr(data.result);
-        } else {
-          setError("OKR not found.");
-        }
-        setLoading(false);
-      })
-      .catch(() => {
-        setError("Failed to fetch OKR.");
-        setLoading(false);
-      });
+    try {
+      const res = await fetch(`${API_BASE}/${params.id}`);
+      const data = await res.json();
+      if (data.result) {
+        setOkr(data.result);
+      } else {
+        setError("OKR not found.");
+      }
+    } catch (err) {
+      setError("Failed to fetch OKR.");
+    } finally {
+      setLoading(false);
+    }
   }, [params?.id]);
+
+  useEffect(() => {
+    fetchOkrDetails();
+  }, [fetchOkrDetails]);
 
   const getLevelColor = (level: string) => {
     switch (level?.toLowerCase()) {
@@ -52,7 +62,7 @@ const OkrDetails = () => {
     }
   };
 
-  const renderEvidenceInput = (hint: string, value: string | File, setValue: (v: string | File) => void) => {
+  const renderEvidenceInput = (hint: string, value: string | File[], setValue: (v: string | File[]) => void) => {
     switch (hint?.toLowerCase()) {
       case 'text':
         return (
@@ -66,7 +76,7 @@ const OkrDetails = () => {
         );
       case 'pdf':
       case 'screenshot':
-        return <FileUploaderTest />;
+        return <FileUploaderTest onFileSelect={setSelectedFile} />;
       case 'linkedin-url':
       case 'git-url':
         return (
@@ -88,6 +98,77 @@ const OkrDetails = () => {
             onChange={e => setValue(e.target.value)}
           />
         );
+    }
+  };
+
+  const handleSubmitEvidence = useCallback(async (taskId: string, okrId: string, evidenceHint: string, submissionContent: string | File[] | null) => {
+    let payload: { submission_id: string; okr_id: string; submission_content: string; submission_type: string };
+
+    if (evidenceHint.toLowerCase() === 'pdf' || evidenceHint.toLowerCase() === 'screenshot') {
+      if (submissionContent && Array.isArray(submissionContent) && submissionContent.length > 0) {
+        const file = submissionContent[0];
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = async () => {
+          const base64Content = reader.result as string;
+          payload = {
+            submission_id: generateSubmissionId(taskId), // Using a unique submission_id
+            okr_id: okrId,
+            submission_content: base64Content.split(',')[1], // Send only the base64 part
+            submission_type: evidenceHint.toLowerCase(),
+          };
+          await sendValidationRequest(payload);
+        };
+        reader.onerror = (error) => {
+          console.error("Error reading file:", error);
+          setError("Failed to read file.");
+        };
+      } else {
+        setError("No file selected for submission.");
+        return;
+      }
+    } else {
+      payload = {
+        submission_id: generateSubmissionId(taskId), // Using a unique submission_id
+        okr_id: okrId,
+        submission_content: typeof submissionContent === 'string' ? submissionContent : '',
+        submission_type: evidenceHint.toLowerCase(),
+      };
+      await sendValidationRequest(payload);
+    }
+  }, []);
+
+  const sendValidationRequest = async (payload: any) => {
+    try {
+      const response = await fetch("http://localhost:8000/api/okr/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      console.log("Validation response:", data);
+
+      if (response.ok && data.success) {
+        toast({
+          title: "Validation Successful!",
+          description: data.message || "Your evidence has been successfully validated.",
+        });
+        fetchOkrDetails(); // Refresh OKR details to update task status
+      } else {
+        toast({
+          title: "Validation Failed!",
+          description: data.message || "There was an error validating your evidence.",
+          variant: "destructive",
+        });
+      }
+    } catch (err) {
+      console.error("Error validating OKR:", err);
+      toast({
+        title: "Request Error",
+        description: "Failed to send validation request.",
+        variant: "destructive",
+      });
+      setError("Failed to send validation request.");
     }
   };
 
@@ -217,14 +298,15 @@ const OkrDetails = () => {
 
                     <Accordion type="single" collapsible value={openAccordion === idx ? String(idx) : undefined} onValueChange={() => setOpenAccordion(openAccordion === idx ? null : idx)}>
                       <AccordionItem value={String(idx)}>
-                        <AccordionTrigger>Submit Evidence for this Task</AccordionTrigger>
+                        <h3 className="text-xl font-semibold text-gray-800 mb-4"> Submit Evidence for this Task </h3>
                         <AccordionContent>
                           <form className="space-y-4">
                             <div>
                               <label className="block text-white/80 mb-2">Evidence</label>
-                              {renderEvidenceInput(task.evidence_hint, evidenceValues[idx] || '', v => setEvidenceValues(ev => ({ ...ev, [idx]: v })))}
+                              {renderEvidenceInput(task.evidence_hint, evidenceValues[idx] || (task.evidence_hint.toLowerCase() === 'pdf' || task.evidence_hint.toLowerCase() === 'screenshot' ? [] : ''), v => setEvidenceValues(ev => ({ ...ev, [idx]: v })))}                            </div>
+                            <div className="flex justify-end">
+                              <button type="button" onClick={() => handleSubmitEvidence(task.id, okr.id, task.evidence_hint, evidenceValues[idx] || selectedFile)} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-6 py-2 rounded-lg font-semibold hover:from-indigo-600 hover:to-purple-700 transition-all duration-300">Submit</button>
                             </div>
-                            <button type="submit" className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-6 py-2 rounded-lg font-semibold hover:from-indigo-600 hover:to-purple-700 transition-all duration-300">Submit</button>
                           </form>
                         </AccordionContent>
                       </AccordionItem>
@@ -236,7 +318,7 @@ const OkrDetails = () => {
               <div className="text-center py-16">
                 <div className="backdrop-blur-sm bg-white/5 rounded-2xl p-12 border border-dashed border-white/30">
                   <svg className="w-16 h-16 text-white/40 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002 2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                   </svg>
                   <p className="text-white/60 text-xl font-light">No micro tasks found</p>
                 </div>

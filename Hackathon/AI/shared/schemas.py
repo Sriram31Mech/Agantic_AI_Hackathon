@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import List, Optional
+from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -29,6 +30,11 @@ class TaskBase(BaseModel):
     description: Optional[str] = None
     deadline: str # Changed from datetime to str for ISO 8601 string
 
+class TaskStatus(str, Enum):
+    PENDING = "pending"
+    ACTIVE = "active"
+    COMPLETED = "completed"
+
 class TaskCreate(TaskBase):
     pass
 
@@ -37,15 +43,18 @@ class TaskUpdate(BaseModel):
     description: Optional[str] = None
     deadline: Optional[str] = None # Changed from datetime to str for ISO 8601 string
     status: Optional[str] = None
+    micro_status: Optional[TaskStatus] = None
     completed_at: Optional[datetime] = Field(None, alias="completedAt")
     proof_url: Optional[str] = Field(None, alias="proofUrl")
 
 class Task(TaskBase):
     id: str = Field(..., alias="_id") # Changed from int to str for MongoDB ObjectId
     status: str
+    micro_status: str = "pending"
     completed_at: Optional[datetime] = Field(None, alias="completedAt")
     proof_url: Optional[str] = Field(None, alias="proofUrl")
     created_at: datetime = Field(..., alias="createdAt")
+    updated_at: Optional[datetime] = Field(default_factory=datetime.utcnow, alias="updatedAt")
 
     model_config = ConfigDict(populate_by_name=True)
 
