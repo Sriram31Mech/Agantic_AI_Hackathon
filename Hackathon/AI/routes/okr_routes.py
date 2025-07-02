@@ -6,7 +6,7 @@ import requests
 from pydantic import BaseModel
 
 from shared.schemas import Okr, OkrCreate, Task, TaskCreate, OkrWithTasks, TaskStatus
-from storage import MemStorage, IStorage
+from storage import MemStorage, IStorage, MongoStorage
 from agents.okr_parser import parse_okr
 from agents.okr_validator import validate_submission
 
@@ -21,7 +21,7 @@ class ValidationRequest(BaseModel):
 
 # Dependency to get storage instance
 def get_storage() -> IStorage:
-    return MemStorage()
+    return MongoStorage()
 
 async def generate_micro_tasks(okr_id: str, description: str, storage: IStorage) -> List[Task]:
     tasks = []

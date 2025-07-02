@@ -76,7 +76,7 @@ const OkrDetails = () => {
         );
       case 'pdf':
       case 'screenshot':
-        return <FileUploaderTest onFileSelect={setSelectedFile} />;
+        return <FileUploaderTest onValueChange={setSelectedFile} />;
       case 'linkedin-url':
       case 'git-url':
         return (
@@ -272,6 +272,19 @@ const OkrDetails = () => {
                       >
                         {task.level || "N/A"}
                       </span>
+
+                      {/* Task Status Display */}
+                      <span
+                        className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-bold uppercase tracking-wider border-2 backdrop-blur-sm ${task.status === 'completed' ? 'bg-green-500/20 text-green-200 border-green-400/30' : 'bg-yellow-500/20 text-yellow-200 border-yellow-400/30'}`}
+                      >
+                        {task.status || "PENDING"}
+                        {task.status === 'completed' && (
+                          <svg className="ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </span>
+
                     </div>
 
                     <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">

@@ -9,6 +9,10 @@ import {
 } from "@/components/ui/file-upload";
 import { Paperclip } from 'lucide-react';
 
+interface FileUploaderTestProps {
+  onValueChange: (files: File[] | null) => void;
+}
+
 const FileSvgDraw = () => {
   return (
     <>
@@ -36,7 +40,7 @@ const FileSvgDraw = () => {
   );
 };
 
-const FileUploaderTest = () => {
+const FileUploaderTest = ({ onValueChange }: FileUploaderTestProps) => {
   const [files, setFiles] = useState<File[] | null>(null);
 
   const dropZoneConfig = {
@@ -48,7 +52,10 @@ const FileUploaderTest = () => {
   return (
     <FileUploader
       value={files}
-      onValueChange={setFiles}
+      onValueChange={(newFiles) => {
+        setFiles(newFiles);
+        onValueChange(newFiles);
+      }}
       dropzoneOptions={dropZoneConfig}
       className='relative  rounded-lg p-2 w-96 mx-auto'
     >

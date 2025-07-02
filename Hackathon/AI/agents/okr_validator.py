@@ -66,21 +66,31 @@ llm = init_model()
 # -------------------------------
 # Tool 4: Save validation report to MongoDB
 # -------------------------------
-def save_validation_report_func(input_json: str) -> dict:
-    """Saves the validation report to a new collection in MongoDB. Input should be a JSON string with 'submission_id', 'okr_id', and 'result'."""
+def save_validation_report_func(report_details: dict) -> dict:
+    """Saves the validation report to a new collection in MongoDB. Input should be a dictionary with 'submission_id', 'okr_id', 'overall_result', and individual agent results."""
     try:
-        data = json.loads(input_json)
-        submission_id = data['submission_id']
-        okr_id = data['okr_id']
-        result = data['result']
-    except (json.JSONDecodeError, KeyError) as e:
-        return {"error": f"Invalid input JSON for save_validation_report: {e}"}
+        submission_id = report_details['submission_id']
+        okr_id = report_details['okr_id']
+        overall_result = report_details['overall_result']
+        five_pillars_result = report_details.get('five_pillars_result', '')
+        semantic_drift_result = report_details.get('semantic_drift_result', '')
+        measurability_result = report_details.get('measurability_result', '')
+        suggestions_result = report_details.get('suggestions_result', '')
+        comparison_result = report_details.get('comparison_result', '')
+
+    except KeyError as e:
+        return {"error": f"Missing key in report_details for save_validation_report: {e}"}
 
     reports_collection = db["validation_reports"]
     report_data = {
         "submission_id": submission_id,
         "okr_id": okr_id,
-        "validation_result": result,
+        "overall_validation_result": overall_result,
+        "five_pillars_check": five_pillars_result,
+        "semantic_drift_check": semantic_drift_result,
+        "measurability_check": measurability_result,
+        "suggestions": suggestions_result,
+        "task_evidence_comparison": comparison_result,
         "timestamp": datetime.now().isoformat()
     }
     try:
@@ -94,15 +104,45 @@ def save_validation_report_func(input_json: str) -> dict:
 # -------------------------------
 @tool
 def update_okr_status(okr_id: str) -> dict:
-    """Updates the status of an OKR to 'completed' in MongoDB."""
+    """Updates all micro_tasks' micro_status to 'completed'."""
     try:
-        okr_collection.update_one(
-            {"_id": okr_id},
-            {"$set": {"status": "completed"}}
+        mongo_uri = os.getenv("MONGO_URI")
+        db_name = os.getenv("MONGO_DB_NAME")
+        collection_name = os.getenv("MONGO_COLLECTION_NAME")
+
+        print(f"[INFO] Connecting to MongoDB at {mongo_uri}")
+        client = MongoClient(mongo_uri)
+        db = client[db_name]
+        collection = db[collection_name]  # should be 'micro_tasks'
+
+        try:
+            obj_id = ObjectId(okr_id)
+        except Exception as e:
+            print(f"[ERROR] Invalid ObjectId format: {okr_id}")
+            return {"error": "Invalid ObjectId format"}
+
+        print(f"[INFO] Fetching document with _id: {okr_id}")
+        okr_doc = collection.find_one({"_id": obj_id})
+        if not okr_doc:
+            return {"error": "Document not found"}
+
+        micro_tasks = okr_doc.get("micro_tasks", [])
+        for task in micro_tasks:
+            task["micro_status"] = "completed"
+
+        print(f"[INFO] Updating document with modified micro_tasks...")
+
+        result = collection.update_one(
+            {"_id": obj_id},
+            {"$set": {"micro_tasks": micro_tasks}}
         )
-        return {"status": f"OKR {okr_id} status updated to completed"}
+
+        print(f"[INFO] Matched: {result.matched_count}, Modified: {result.modified_count}")
+        return {"status": "All micro_tasks marked as completed"}
+
     except Exception as e:
-        return {"error": f"Failed to update OKR status: {e}"}
+        print(f"[EXCEPTION] {e}")
+        return {"error": str(e)}
 
 # -------------------------------
 # New Tool 6: Extract text from PDF (base64 encoded)
@@ -192,7 +232,7 @@ tools = [
     Tool(
         name="save_validation_report_func",
         func=save_validation_report_func,
-        description="Saves the validation report to a new collection in MongoDB. Input should be a JSON string with 'submission_id', 'okr_id', and 'result'."
+        description="Saves the validation report to a new collection in MongoDB. Input should be a dictionary with 'submission_id', 'okr_id', 'overall_result', and individual agent results."
     ),
     Tool(
         name="update_okr_status",
@@ -359,17 +399,28 @@ async def validate_submission(task_id: str, okr_id: str, submission_content: str
 
         else:
             overall_validation_result = "No content to validate or extraction failed."
+            # Initialize individual results to empty strings if no content to validate
+            five_pillars_result = ""
+            semantic_drift_result = ""
+            measurability_result = ""
+            suggestions_result = ""
+            comparison_result = ""
             print(f"DEBUG: validate_submission: {overall_validation_result}")
 
         # Step 4: Save validation report
         print(f"DEBUG: validate_submission: Saving validation report for {task_id}")
-        save_validation_report_input = json.dumps({
+        save_report_data = {
             "submission_id": task_id,
             "okr_id": okr_id,
-            "result": overall_validation_result
-        })
-        print(f"DEBUG: validate_submission: Save report input: {save_validation_report_input}")
-        save_report_result = save_validation_report_func(save_validation_report_input) # Direct call, not through agent
+            "overall_result": overall_validation_result,
+            "five_pillars_result": five_pillars_result,
+            "semantic_drift_result": semantic_drift_result,
+            "measurability_result": measurability_result,
+            "suggestions_result": suggestions_result,
+            "comparison_result": comparison_result
+        }
+        print(f"DEBUG: validate_submission: Save report input: {save_report_data}")
+        save_report_result = save_validation_report_func(save_report_data) # Direct call, not through agent
         print(f"DEBUG: validate_submission: Save Report Result: {save_report_result}")
 
         validation_successful = "❌" not in overall_validation_result
